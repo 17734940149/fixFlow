@@ -1,0 +1,3 @@
+#!/bin/sh
+# 检查即将推送的新提交，避免把历史中未上传的范围外资料一并发送。
+exec python backend/scripts/check_git_scope.py --push

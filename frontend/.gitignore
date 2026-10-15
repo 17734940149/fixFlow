@@ -1,0 +1,7 @@
+# 目录内的规则随代码分发，克隆后也不会误提交依赖和构建产物。
+node_modules/
+dist/
+.npm-cache/
+.env
+.env.*
+!.env.example

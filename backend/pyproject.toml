@@ -1,0 +1,23 @@
+[project]
+name = "fixflow-backend"
+version = "0.1.0"
+description = "FixFlow Python 后端基础框架"
+readme = "README.md"
+requires-python = ">=3.14,<3.15"
+dependencies = [
+    "fastapi==0.143.0",
+    "uvicorn==0.54.0",
+    "pydantic==2.14.1",
+    "pydantic-settings==2.15.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "httpx2==2.13.1",
+    "pytest==9.1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"

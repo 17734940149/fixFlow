@@ -1,0 +1,98 @@
+:root,
+:root[data-theme="jade"] {
+  color-scheme: light;
+  --bg: #f6f8f7;
+  --surface: #ffffff;
+  --sidebar: #f4f6f5;
+  --surface-raised: #f9faf9;
+  --text: #202a27;
+  --muted: #65716c;
+  --border: #dde4df;
+  --accent: #176b52;
+  --accent-soft: #eaf5ef;
+  --on-accent: #ffffff;
+  --danger: #be3f47;
+  --danger-soft: #fff0f2;
+  --ok: #207a51;
+  --ok-soft: #edf7f0;
+  --warning: #94621b;
+  --warning-soft: #fff7e6;
+  --hover: #edf1ee;
+  --control-border: #bccbc2;
+  --scrim: rgb(22 34 28 / 28%);
+  --shadow: 0 18px 60px rgb(19 36 27 / 15%);
+  --shadow-color: rgb(19 36 27 / 12%);
+  --interaction-hover: var(--hover);
+  --interaction-focus: var(--accent);
+  --ink: var(--text);
+  --line: var(--border);
+  --soft: var(--surface-raised);
+  --paper: var(--surface);
+  font-family: 'Noto Sans SC Variable', 'Microsoft YaHei UI', 'Microsoft YaHei', Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text);
+  background: var(--bg);
+}
+
+:root[data-theme="mono"] {
+  color-scheme: light;
+  --bg: #f7f8fa;
+  --surface: #ffffff;
+  --sidebar: #f0f2f4;
+  --surface-raised: #f9fafb;
+  --text: #24282f;
+  --muted: #68717e;
+  --border: #dce1e7;
+  --accent: #384656;
+  --accent-soft: #e9edf2;
+  --on-accent: #ffffff;
+  --hover: #e9edf0;
+  --control-border: #bdc5ce;
+  --scrim: rgb(25 29 35 / 29%);
+  --shadow: 0 18px 60px rgb(25 29 35 / 15%);
+}
+
+:root[data-theme="blue"] {
+  color-scheme: light;
+  --bg: #f6f9fb;
+  --surface: #ffffff;
+  --sidebar: #eff5f8;
+  --surface-raised: #f7fbfd;
+  --text: #21313a;
+  --muted: #5e717d;
+  --border: #d8e3e9;
+  --accent: #176b9b;
+  --accent-soft: #e8f4fa;
+  --on-accent: #ffffff;
+  --hover: #e7f0f5;
+  --control-border: #b8cbd6;
+  --scrim: rgb(24 40 50 / 28%);
+  --shadow: 0 18px 60px rgb(24 40 50 / 15%);
+}
+
+:root[data-theme="graphite"] {
+  color-scheme: dark;
+  --bg: #181a1c;
+  --surface: #202326;
+  --sidebar: #1b1e20;
+  --surface-raised: #272b2e;
+  --text: #ecefec;
+  --muted: #a8b1ad;
+  --border: #3c4540;
+  --accent: #70d1af;
+  --accent-soft: #253d34;
+  --on-accent: #132c23;
+  --danger: #f298a1;
+  --danger-soft: #422a30;
+  --ok: #86d4aa;
+  --ok-soft: #243a2d;
+  --warning: #e8c27c;
+  --warning-soft: #403727;
+  --hover: #303632;
+  --control-border: #637369;
+  --scrim: rgb(0 0 0 / 58%);
+  --shadow: 0 18px 60px rgb(0 0 0 / 38%);
+  --shadow-color: rgb(0 0 0 / 35%);
+}
+

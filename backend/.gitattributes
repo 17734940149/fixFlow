@@ -1,0 +1,2 @@
+# Git 钩子由 shell 读取，统一换行符避免 Windows 转换后无法执行。
+/.githooks/* text eol=lf

@@ -1,0 +1,3 @@
+#!/bin/sh
+# 检查完整暂存内容，允许移除范围外文件的纠正提交。
+exec python backend/scripts/check_git_scope.py --index
