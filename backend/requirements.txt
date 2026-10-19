@@ -1,18 +1,61 @@
 # 已在 Windows / Python 3.14.2 验证；固定直接和间接依赖以便复现。
+# FastAPI 使用的类型说明元数据支持；固定间接依赖以复现框架接口描述。
 annotated-doc==0.0.5
+# Pydantic 使用的字段约束描述；支持 schemas/ 的输入输出校验。
 annotated-types==0.8.0
+# Starlette 等库使用的异步协调工具；支持框架管理请求与线程执行。
 anyio==4.15.1
+# Uvicorn 命令行使用的参数处理工具；当前 app.cli 自身使用标准库 argparse。
 click==8.5.0
+# 只在 Windows 安装的终端颜色兼容支持；用于命令行显示而不是业务判断。
 colorama==0.4.6; sys_platform == "win32"
+# main.py 与 api/ 的 Web 框架，负责路由、依赖注入和响应组织。
 fastapi==0.143.0
+# Uvicorn 使用的网络协议解析支持；帮助服务器处理浏览器发来的基础请求。
 h11==0.16.0
+# 网络库使用的国际化域名编码支持；作为间接依赖固定版本。
 idna==3.20
+# 框架依赖的可观测性接口；安装此包不代表项目已接入监控平台。
 opentelemetry-api==1.45.1
+# schemas/ 的输入输出模型工具；让类型与字段限制成为可执行校验。
 pydantic==2.14.1
+# Pydantic 的底层校验实现；与上层版本配套以避免安装行为漂移。
 pydantic_core==2.50.1
+# core/config.py 的配置读取工具；统一处理环境变量与本机 .env。
 pydantic-settings==2.15.0
+# 配置库解析 .env 的支持；读取本机连接信息，不要求业务手工解析文本。
 python-dotenv==1.2.4
+# FastAPI 所依赖的请求、中间件和响应基础；本项目复用其跨来源与线程能力。
 starlette==1.8.0
+# 依赖库使用的类型功能兼容支持；业务类型声明仍采用当前 Python 语法。
 typing_extensions==4.16.0
+# Pydantic 使用的类型声明检查支持；作为间接依赖固定以复现校验环境。
 typing-inspection==0.4.4
+# 启动命令使用的网络服务器；监听端口并调用 app.main 中的应用对象。
 uvicorn==0.54.0
+
+# 数据访问、迁移和密码保护；已在本机 Python 3.14.2 安装验证。
+# db/、models/ 与 services/ 的数据库工具；管理表映射、查询、连接池和事务。
+SQLAlchemy==2.1.4
+# migrations/ 的结构版本工具；明确执行升级，避免应用启动时隐式修改表。
+alembic==1.20.0
+# SQLAlchemy 使用的 PostgreSQL 驱动；将查询和事务操作发送到真实数据库。
+psycopg==3.3.6
+# Psycopg 的已编译驱动组件；本机开发安装无需另外准备编译器。
+psycopg-binary==3.3.6
+# core/security.py 的密码校验包装；调用成熟算法而不手工设计密码方案。
+pwdlib==0.3.1
+# pwdlib 使用的 Argon2 密码算法实现；提高泄露摘要后的猜测成本。
+argon2-cffi==25.1.0
+# Argon2 Python 包调用底层算法的绑定；与包装库配合完成密码计算。
+argon2-cffi-bindings==26.1.0
+# 密码算法绑定使用的外部函数调用支持；属于间接运行依赖。
+cffi==2.1.1
+# 外部函数绑定工具使用的解析支持；固定间接依赖以复现安装环境。
+pycparser==3.11
+# Alembic 渲染 script.py.mako 的模板工具；用于生成后续迁移代码。
+Mako==1.4.3
+# Mako 等模板库使用的字符串处理支持；当前不表示后端提供网页模板业务。
+MarkupSafe==3.0.4
+# Windows 时区数据支持；数据库驱动可能使用，按操作系统条件安装。
+tzdata==2026.5; sys_platform == "win32"

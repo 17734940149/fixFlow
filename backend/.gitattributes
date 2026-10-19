@@ -1,2 +1,4 @@
-# Git 钩子由 shell 读取，统一换行符避免 Windows 转换后无法执行。
+# 作用：指定 backend/.githooks/ 文件由 Git 统一保存和检出为换行符 LF。
+# 使用位置：Git 添加与检出钩子时读取；原因：shell 可能把 Windows 回车识别成命令字符。
+# 本格式的注释必须单独成行，直接在规则末尾加说明会被当作额外属性。
 /.githooks/* text eol=lf

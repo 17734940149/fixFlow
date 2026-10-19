@@ -1,6 +1,26 @@
-# FixFlow 后端：第一步基础框架
+# FixFlow 后端
 
-本步骤建立能独立启动、能被前端访问、能自动验证的 Python 服务。当前只有健康检查接口，没有用户登录、数据库和业务接口。前端展示的数据仍由前端演示数据提供。
+当前已在基础框架上增加 PostgreSQL 连接、显式表结构迁移和真实登录接口。前端仍使用原有演示登录及演示数据，本步骤没有改动前端业务流程。
+
+## 当前步骤：数据库与真实登录
+
+本机已连接 PostgreSQL 18.6，`fixflow` 数据库与非超级用户 `fixflow_app` 已建立，连接保存在不提交的 `.env`，首个迁移已完成。其他电脑需要先安装 PostgreSQL 18.x，建立专用数据库账号并配置连接；以下命令可用于复现初始化和创建你自己的应用账号，在 `backend` 目录执行：
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt # 安装固定的运行与测试依赖，以便复现当前后端验证环境。
+.\.venv\Scripts\python.exe -m alembic upgrade head # 按迁移版本建立或升级业务表，应用普通启动不会自动执行这一步。
+.\.venv\Scripts\python.exe -m app.cli check-db # 核验连接和必要表是否可用，区分应用存活与业务依赖就绪。
+.\.venv\Scripts\python.exe -m app.cli create-user --account admin --display-name 管理员 --role admin # 交互创建应用管理员，密码隐藏输入；此账号用于网站登录而不是数据库连接。
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8100 # 用开发服务监听本机 8100 端口，将请求交给 app.main:app，修改 Python 文件后自动重载。
+```
+
+创建账号会交互读取密码，不预置演示密码。实际接口为 `POST /api/v1/auth/login`、`GET /api/v1/auth/me`、`POST /api/v1/auth/logout`。登录凭证默认一小时到期，退出后立即失效；`GET /api/v1/ready` 检查数据库连接及必要表。数据库未配置时健康检查仍返回正常存活，真实业务接口和就绪检查返回未就绪。
+
+过期登录凭证可执行 `.\.venv\Scripts\python.exe -m app.cli cleanup-sessions` 清理。数据库不会在启动时自动建表，需要明确执行迁移。Redis、问答会话持久化、文档处理、向量检索和模型生成均未在本步骤引入。
+
+完整安装步骤、技术比较、容量计算和面试问答保存在本机 [数据库接入与真实登录-20261016](../docs/03-数据库接入与真实登录-20261016.md)。学习文档按照项目约定放在根 `docs/`，目前不随 Git 上传；以下章节保留第一步基础框架的学习说明。
+
+逐行代码说明、函数和对象的调用关系、登录到返回的完整执行过程，以及与公司实际使用场景的比较，见本机 [后端逐行注释与请求流程-20261016](../docs/04-后端逐行注释与请求流程-20261016.md)。先阅读该文档的流程图，再按照链接进入源码。
 
 ## 1. 先认识本次用到的工具
 
@@ -26,8 +46,8 @@
 先打开 PowerShell，进入后端目录。后面的命令都在这个目录运行。
 
 ```powershell
-cd E:\项目\fixFlow\backend
-python --version
+cd E:\项目\fixFlow\backend # 进入命令所需的项目目录，使模块导入和相对路径按预期解析。
+python --version # 确认当前 Python 解释器版本，避免用错系统或其他项目的运行环境。
 ```
 
 如果电脑的 `python` 命令不是 Python `3.14`，先安装对应版本并确保命令指向它。此项目的依赖当前只在 Python `3.14.2` 上完成验证，不能据此声称兼容其他版本。
@@ -35,19 +55,19 @@ python --version
 第一次使用时创建虚拟环境。`.venv` 是目录名；如果目录已经存在且对应 Python 版本正确，就不必重新创建。
 
 ```powershell
-python -m venv .venv
+python -m venv .venv # 为项目建立隔离环境，避免依赖安装影响电脑上的其他 Python 项目。
 ```
 
 安装运行和测试所需依赖。`-m` 表示让指定的 Python 运行后面的模块；这里明确使用 `.venv` 中的 Python，所以不会把第三方包安装进系统 Python。
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt # 安装固定的运行与测试依赖，以便复现当前后端验证环境。
 ```
 
 `pip` 是 Python 的包安装工具，`-r` 表示从文件读取依赖列表。`requirements-dev.txt` 会先读取 `requirements.txt` 的运行依赖，再安装测试工具。以后部署服务时只需要运行依赖：
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt # 仅安装固定运行依赖，适用于不需要测试工具的正式运行环境。
 ```
 
 本说明直接调用虚拟环境中的程序，不要求执行“激活虚拟环境”，因此也不需要修改 PowerShell 的脚本执行策略。
@@ -57,7 +77,7 @@ python -m venv .venv
 本地配置文件 `.env` 存在时会自动读取；不存在时使用开发默认值。可以第一次将示例复制为自己的配置，已有 `.env` 时不要覆盖：
 
 ```powershell
-Copy-Item .env.example .env
+Copy-Item .env.example .env # 仅首次且没有 .env 时复制配置模板，已有真实配置时不要重复覆盖。
 ```
 
 | 配置项 | 默认值 | 作用 |
@@ -73,6 +93,7 @@ Copy-Item .env.example .env
 来源由协议、主机名和端口共同组成。`http://localhost:5173` 与 `http://127.0.0.1:5173` 是不同来源；更换前端端口后，需要将新来源写入列表。列表必须是带方括号和双引号的格式，例如：
 
 ```dotenv
+# 设置可读取后端响应的本地前端来源；保留数组的括号与双引号。
 FIXFLOW_CORS_ORIGINS=["http://localhost:5173","http://127.0.0.1:5173"]
 ```
 
@@ -81,7 +102,7 @@ FIXFLOW_CORS_ORIGINS=["http://localhost:5173","http://127.0.0.1:5173"]
 ## 4. 启动：为什么要运行 Uvicorn
 
 ```powershell
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8100
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8100 # 用开发服务监听本机 8100 端口，将请求交给 app.main:app，修改 Python 文件后自动重载。
 ```
 
 `app.main:app` 表示加载 `app/main.py` 中名为 `app` 的应用对象。`--reload` 在开发时监测代码修改并重新加载；部署时应去掉。`127.0.0.1` 表示只监听本机，`8100` 是接收请求的端口。
@@ -132,8 +153,8 @@ backend/
 ## 6. 验证：为什么不能只看“服务启动成功”
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest
-.\.venv\Scripts\python.exe -m pip check
+.\.venv\Scripts\python.exe -m pytest # 执行 tests/ 自动验证；真实 PostgreSQL 测试需显式指定独立测试库才运行。
+.\.venv\Scripts\python.exe -m pip check # 检查已安装包的版本要求是否冲突，补充业务测试不能覆盖的依赖一致性验证。
 ```
 
 第一条命令运行测试，覆盖健康返回内容、两个本地前端来源、未知来源预检拒绝、自动接口文档、文档关闭和环境变量配置。第二条命令检查已安装依赖之间的版本关系。服务能启动不等于这些行为都正确，所以需要分别检查。
@@ -141,10 +162,10 @@ backend/
 测试使用 FastAPI 的测试客户端，它直接在程序内发起请求，无需提前占用 `8100` 端口。实际启动后的本机请求可另外用以下命令检查：
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:8100/api/v1/health
+Invoke-RestMethod http://127.0.0.1:8100/api/v1/health # 向本机健康接口发出实际网络请求，确认监听服务能返回预期结构。
 ```
 
-测试通过后应看到 `7 passed`，依赖检查通过会显示 `No broken requirements found.`。浏览器中的真实页面联调另由前端启动后验证。
+第一步健康检查包含 7 项用例，后续增加的数据库与认证用例一起运行，总数以实际测试输出为准。依赖检查通过会显示 `No broken requirements found.`。浏览器中的真实页面联调另由前端启动后验证。
 
 ## 7. 本步骤知识点与面试问答
 

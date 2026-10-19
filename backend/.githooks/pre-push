@@ -1,3 +1,3 @@
 #!/bin/sh
 # 检查即将推送的新提交，避免把历史中未上传的范围外资料一并发送。
-exec python backend/scripts/check_git_scope.py --push
+exec python backend/scripts/check_git_scope.py --push # Git 推送前按标准输入检查远端尚无的新提交；exec 透传阻止结果，不修改业务或数据库。

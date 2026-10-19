@@ -1,23 +1,27 @@
-[project]
-name = "fixflow-backend"
-version = "0.1.0"
-description = "FixFlow Python 后端基础框架"
-readme = "README.md"
-requires-python = ">=3.14,<3.15"
-dependencies = [
-    "fastapi==0.143.0",
-    "uvicorn==0.54.0",
-    "pydantic==2.14.1",
-    "pydantic-settings==2.15.0",
-]
+[project] # 声明项目自身信息，供 Python 包工具识别当前后端及其运行要求。
+name = "fixflow-backend" # 包工具使用的项目名称，与数据库名称和网站账号分别管理。
+version = "0.1.0" # 当前工程版本标记，供安装工具识别；接口显示版本由 Settings 配置提供。
+description = "FixFlow Python 后端基础框架" # 向包工具说明项目用途，不参与请求处理。
+readme = "README.md" # 指定安装说明入口，让项目说明与依赖信息可以一起查看。
+requires-python = ">=3.14,<3.15" # 限定已经选择的解释器系列，避免未经验证地安装到其他系列。
+dependencies = [ # 列出后端直接使用的运行库，固定版本以复现当前验证环境。
+    "fastapi==0.143.0", # main.py 与 api/ 使用它建立路由、注入依赖、组织响应和接口说明。
+    "uvicorn==0.54.0", # 启动命令使用它监听端口并把网络请求交给 app.main:app。
+    "pydantic==2.14.1", # schemas/ 使用它校验请求和公开响应字段，减少无效数据进入服务层。
+    "pydantic-settings==2.15.0", # core/config.py 使用它读取并校验环境配置，不在业务函数里写死连接信息。
+    "SQLAlchemy==2.1.4", # db/、models/、services/ 使用它组织连接、表映射、查询与事务。
+    "alembic==1.20.0", # migrations/ 与迁移命令使用它记录结构版本，应用启动不隐式改表。
+    "psycopg[binary]==3.3.6", # 数据库引擎使用 PostgreSQL 驱动；已编译组件避免本机另配编译工具。
+    "pwdlib[argon2]==0.3.1", # core/security.py 使用成熟密码算法，避免自行设计密码保护逻辑。
+] # 完成直接运行依赖声明；完整间接依赖另由 requirements.txt 固定。
 
-[project.optional-dependencies]
-dev = [
-    "httpx2==2.13.1",
-    "pytest==9.1.1",
-]
+[project.optional-dependencies] # 把测试工具与正式运行依赖区分，部署时可以只安装运行所需内容。
+dev = [ # 定义开发依赖组，供支持项目元信息的安装工具选择。
+    "httpx2==2.13.1", # FastAPI 测试客户端使用的网络客户端实现，不是业务数据库驱动。
+    "pytest==9.1.1", # 自动发现 tests/ 中的用例和测试准备函数，验证约定及失败分支。
+] # 完成开发依赖组；requirements-dev.txt 同时记录其间接依赖。
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["."]
-addopts = "-q"
+[tool.pytest.ini_options] # pytest 从此处读取本项目测试设置，减少每次运行手工指定参数。
+testpaths = ["tests"] # 只在自有测试目录收集用例，避免扫描虚拟环境或其他资料。
+pythonpath = ["."] # 将 backend 当前目录加入导入搜索路径，使测试能导入 app 包。
+addopts = "-q" # 默认使用简洁测试输出，失败时仍保留具体断言和错误信息。
