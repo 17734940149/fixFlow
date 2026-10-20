@@ -1,59 +1,112 @@
-import { computed, reactive } from 'vue'
+import { computed, reactive, watch } from 'vue'
 import { readStorage, writeStorage } from '@/utils/storage'
 import { useLibrary } from './useLibrary'
+import { useAuth } from './useAuth'
 
 const state = reactive({
   user: null, draft: '', messages: [], sessions: [], activeSession: '',
-  scenario: 'normal', loginOpen: false, submitAfterLogin: false, errorKey: '',
+  scenario: 'normal', loginOpen: false, submitAfterLogin: false, errorKey: '', sending: false,
 })
 let answerTimer
+let workspaceRevision = 0
 const library = useLibrary()
+const identity = useAuth()
+const { auth } = identity
 const running = computed(() => state.messages.some((message) => message.status === 'thinking'))
+const submitting = computed(() => state.sending)
+
+// 真实身份变化时隔离演示工作区，角色刷新不清空同一用户正在编辑的内容。
+watch(() => auth.user, (user) => {
+  if (user && state.user?.id === user.id) {
+    state.user.role = user.role
+    state.user.account = user.account
+    state.user.display_name = user.display_name
+    return
+  }
+  resetIdentityWorkspace(true)
+  if (!user) return
+  const profile = readStorage(`fixflow:demo:profile:${user.id}`, {})
+  state.user = { ...user, name: typeof profile?.name === 'string' ? profile.name : user.display_name, avatar: '' }
+  const stored = readStorage(`fixflow:demo:sessions:${user.id}`, [])
+  state.sessions = Array.isArray(stored) ? stored.filter((item) => item && typeof item.id === 'string' && Array.isArray(item.messages)) : []
+}, { flush: 'sync' })
 
 // 集中管理同屏问答状态，使主题、语言和抽屉切换不会销毁正在输入的内容。
 export function useWorkspace() {
-  return { state, running, login, logout, sendQuestion, stopAnswer, newChat, selectSession, saveProfile, retryAnswer }
+  return { state, auth, running, submitting, login, logout, sendQuestion, stopAnswer, newChat, selectSession, saveProfile, retryAnswer }
 }
 
-// 演示账号只用于检查角色界面，真实身份校验必须在后续由服务端完成。
-function login(account, password) {
-  if (!['user', 'admin'].includes(account) || password !== 'demo123') return false
-  const profile = readStorage(`fixflow:profile:${account}`, {})
-  state.user = { account, role: account === 'admin' ? 'admin' : 'user', name: profile?.name || account, avatar: '' }
-  const stored = readStorage(`fixflow:sessions:${account}`, [])
-  state.sessions = Array.isArray(stored) ? stored : []
+// 认证通过后再关闭弹窗，游客有效草稿只消费一次；失败由弹窗显示对应错误。
+async function login(account, password) {
+  if (!await identity.login(account, password)) return false
   state.loginOpen = false
   if (state.submitAfterLogin) {
     state.submitAfterLogin = false
-    sendQuestion()
+    await sendQuestion()
   }
   return true
 }
 
-// 切换账号前清空当前工作区，避免把上一个演示账号的消息展示给另一个账号。
-function logout() {
+// 身份变化先保存旧用户的演示内容，再移除旧头像和消息，恢复失败时保留输入草稿。
+function resetIdentityWorkspace(keepDraft = false) {
+  const draft = state.draft
   stopAnswer()
   if (state.user?.avatar) URL.revokeObjectURL(state.user.avatar)
   state.user = null
   state.sessions = []
   newChat()
+  if (keepDraft) state.draft = draft
+}
+
+// 只有后端退出完成才清空草稿；失败保留身份供重试，避免误报已经撤销凭证。
+async function logout() {
+  if (!await identity.logout()) return false
+  resetIdentityWorkspace()
+  state.submitAfterLogin = false
+  state.loginOpen = false
+  return true
 }
 
 // 在提交时按可见字符校验，支持中文和表情，同时保留超限原文以便直接修改。
-function sendQuestion() {
-  if (running.value) return
+async function sendQuestion() {
+  if (running.value || state.sending || auth.restoring || auth.pending) return
   state.errorKey = ''
   if (!state.draft.trim()) { state.errorKey = 'chat.emptyQuestion'; return }
   if ([...state.draft].length > 1000) { state.errorKey = 'chat.overLimit'; return }
   if (!state.user) {
+    if (auth.noticeKey === 'account.sessionCheckFailed') { state.errorKey = auth.noticeKey; return }
     state.submitAfterLogin = true
     state.loginOpen = true
     return
   }
   const question = state.draft.trim()
-  state.messages.push({ id: crypto.randomUUID(), role: 'user', text: question })
-  state.draft = ''
-  beginAnswer(question)
+  const userId = state.user.id
+  const operation = workspaceRevision
+  state.sending = true
+  try {
+    // 即使当前回答仍为演示，也先校验登录，确保禁用和过期身份不能继续操作。
+    const verified = await identity.verifySession()
+    if (operation !== workspaceRevision) {
+      if (!state.user && auth.noticeKey === 'account.sessionExpired' && state.draft.trim() === question) {
+        state.submitAfterLogin = true
+        state.loginOpen = true
+      }
+      return
+    }
+    if (!verified) {
+      if (auth.noticeKey === 'account.sessionExpired') {
+        state.submitAfterLogin = true
+        state.loginOpen = true
+      } else state.errorKey = 'account.sessionCheckFailed'
+      return
+    }
+    if (state.user?.id !== userId || state.draft.trim() !== question) return
+    state.messages.push({ id: crypto.randomUUID(), role: 'user', text: question })
+    state.draft = ''
+    beginAnswer(question)
+  } finally {
+    if (operation === workspaceRevision) state.sending = false
+  }
 }
 
 // 在生成时保存来源快照，后续下架或删除原文块不会篡改历史演示引用。
@@ -82,7 +135,7 @@ function beginAnswer(question, replaceIndex = -1) {
   }, 1400)
 }
 
-// 每次只更新当前会话，并按账号存储；示例消息可以刷新后重新选择查看。
+// 演示历史按服务端稳定用户编号隔离，不继承以前同名演示账号的本地数据。
 function persistSession() {
   if (!state.user || !state.messages.length) return
   if (!state.activeSession) state.activeSession = crypto.randomUUID()
@@ -94,7 +147,7 @@ function persistSession() {
   const index = state.sessions.findIndex((item) => item.id === session.id)
   if (index === -1) state.sessions.unshift(session)
   else state.sessions[index] = session
-  writeStorage(`fixflow:sessions:${state.user.account}`, state.sessions)
+  writeStorage(`fixflow:demo:sessions:${state.user.id}`, state.sessions)
 }
 
 // 取消计时器并保存停止状态，防止离开会话后迟到的模拟结果写入新会话。
@@ -106,6 +159,8 @@ function stopAnswer() {
 
 // 清空当前对话而保留账号会话列表，符合单工作区的新对话入口。
 function newChat() {
+  workspaceRevision += 1
+  state.sending = false
   stopAnswer()
   state.messages = []
   state.activeSession = ''
@@ -115,7 +170,7 @@ function newChat() {
 
 // 复制历史快照避免浏览历史时误改列表数据，刷新中断的生成转成可重试状态。
 function selectSession(session) {
-  if (running.value) return
+  if (running.value || state.sending) return
   state.activeSession = session.id
   state.messages = JSON.parse(JSON.stringify(session.messages)).map((message) => ({
     ...message, status: message.status === 'thinking' ? 'stopped' : message.status,
@@ -124,11 +179,19 @@ function selectSession(session) {
 }
 
 // 重试替换失败回答，保留原问题且不重复添加用户消息。
-function retryAnswer(message) {
-  if (running.value) return
+async function retryAnswer(message) {
+  if (running.value || state.sending || auth.restoring || auth.pending || !state.user) return
   const index = state.messages.findIndex((item) => item.id === message.id)
   if (index === -1) return
-  beginAnswer(message.question, index)
+  const operation = workspaceRevision
+  state.sending = true
+  try {
+    if (!await identity.verifySession() || operation !== workspaceRevision) return
+    const currentIndex = state.messages.findIndex((item) => item.id === message.id)
+    if (currentIndex !== -1) beginAnswer(message.question, currentIndex)
+  } finally {
+    if (operation === workspaceRevision) state.sending = false
+  }
 }
 
 // 头像只在当前会话使用，避免大图占满浏览器存储；显示名称可在本机保留。
@@ -137,5 +200,5 @@ function saveProfile(name, avatar) {
   if (state.user.avatar && state.user.avatar !== avatar) URL.revokeObjectURL(state.user.avatar)
   state.user.name = name.trim()
   state.user.avatar = avatar
-  writeStorage(`fixflow:profile:${state.user.account}`, { name: state.user.name })
+  writeStorage(`fixflow:demo:profile:${state.user.id}`, { name: state.user.name })
 }

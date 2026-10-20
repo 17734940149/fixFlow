@@ -81,6 +81,7 @@ function moveTheme(event, index) {
       <input ref="fileInput" type="file" accept="image/png,image/jpeg,image/webp" hidden :aria-label="t('account.chooseAvatar')" @change="chooseAvatar" />
     </div>
     <el-form label-position="top" @submit.prevent="save">
+      <p class="muted">{{ t('account.localProfileHint') }}</p>
       <el-form-item :label="t('account.displayName')"><el-input v-model="name" :placeholder="t('account.namePlaceholder')" maxlength="50" /></el-form-item>
       <el-form-item :label="t('account.identity')"><div class="identity-field">{{ state.user?.account }} / {{ t(state.user?.role === 'admin' ? 'account.admin' : 'account.user') }}</div></el-form-item>
       <el-form-item :label="t('account.theme')">

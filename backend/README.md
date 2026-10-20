@@ -1,236 +1,74 @@
 # FixFlow 后端
 
-当前已在基础框架上增加 PostgreSQL 连接、显式表结构迁移和真实登录接口。前端仍使用原有演示登录及演示数据，本步骤没有改动前端业务流程。
+Python 3.14、FastAPI、PostgreSQL。已提供健康检查、数据库就绪检查、登录、当前身份查询和退出接口。前端已接入真实认证；问答、资料管理、历史记录与个人资料编辑仍为本机演示。
 
-## 当前步骤：数据库与真实登录
+## 环境准备
 
-本机已连接 PostgreSQL 18.6，`fixflow` 数据库与非超级用户 `fixflow_app` 已建立，连接保存在不提交的 `.env`，首个迁移已完成。其他电脑需要先安装 PostgreSQL 18.x，建立专用数据库账号并配置连接；以下命令可用于复现初始化和创建你自己的应用账号，在 `backend` 目录执行：
+- Python：`>=3.14,<3.15`。
+- PostgreSQL：18.x；先创建数据库和专用连接账号。
+- 以下命令在 `backend/` 目录执行；已有虚拟环境时跳过创建步骤。
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt # 安装固定的运行与测试依赖，以便复现当前后端验证环境。
-.\.venv\Scripts\python.exe -m alembic upgrade head # 按迁移版本建立或升级业务表，应用普通启动不会自动执行这一步。
-.\.venv\Scripts\python.exe -m app.cli check-db # 核验连接和必要表是否可用，区分应用存活与业务依赖就绪。
-.\.venv\Scripts\python.exe -m app.cli create-user --account admin --display-name 管理员 --role admin # 交互创建应用管理员，密码隐藏输入；此账号用于网站登录而不是数据库连接。
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8100 # 用开发服务监听本机 8100 端口，将请求交给 app.main:app，修改 Python 文件后自动重载。
+python -m venv .venv # 仅首次创建项目虚拟环境。
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt # 安装开发及测试依赖；正式运行使用 requirements.txt。
 ```
 
-创建账号会交互读取密码，不预置演示密码。实际接口为 `POST /api/v1/auth/login`、`GET /api/v1/auth/me`、`POST /api/v1/auth/logout`。登录凭证默认一小时到期，退出后立即失效；`GET /api/v1/ready` 检查数据库连接及必要表。数据库未配置时健康检查仍返回正常存活，真实业务接口和就绪检查返回未就绪。
+## 配置与数据库初始化
 
-过期登录凭证可执行 `.\.venv\Scripts\python.exe -m app.cli cleanup-sessions` 清理。数据库不会在启动时自动建表，需要明确执行迁移。Redis、问答会话持久化、文档处理、向量检索和模型生成均未在本步骤引入。
+仅在 `.env` 不存在时复制模板：
 
-完整安装步骤、技术比较、容量计算和面试问答保存在本机 [数据库接入与真实登录-20261016](../docs/03-数据库接入与真实登录-20261016.md)。学习文档按照项目约定放在根 `docs/`，目前不随 Git 上传；以下章节保留第一步基础框架的学习说明。
+```powershell
+Copy-Item .env.example .env # 首次复制配置，已有本机配置时不要覆盖。
+```
 
-逐行代码说明、函数和对象的调用关系、登录到返回的完整执行过程，以及与公司实际使用场景的比较，见本机 [后端逐行注释与请求流程-20261016](../docs/04-后端逐行注释与请求流程-20261016.md)。先阅读该文档的流程图，再按照链接进入源码。
+在本机 `.env` 中设置 `FIXFLOW_DATABASE_URL`，其他可配置项见 [.env.example](.env.example)。真实密码及连接信息不要提交到 Git，修改配置后重启服务。
 
-## 1. 先认识本次用到的工具
+```powershell
+.\.venv\Scripts\python.exe -m alembic upgrade head # 执行数据库结构迁移，普通启动不会自动建表。
+.\.venv\Scripts\python.exe -m app.cli check-db # 检查连接和必要表，正常输出 database: ready。
+.\.venv\Scripts\python.exe -m app.cli create-user --account admin --display-name 管理员 --role admin # 交互创建网站管理员，密码至少 12 个字符。
+```
 
-| 名词 | 初学者解释 | 为什么本项目要用 |
+`admin` 是示例应用账号名，已存在时使用已有账号或选择其他名称；普通用户使用 `--role user`。没有默认网站密码，数据库连接账号不能用于网页登录。
+
+## 启动与接口
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8100 # 本机开发启动，终端需保持运行。
+```
+
+| 方法 | 地址 | 用途 |
 | --- | --- | --- |
-| Python | 编写后端程序的语言 | 用户要求后端使用 Python |
-| FastAPI | 帮助 Python 接收网络请求并返回结果的框架 | 提供接口路由、数据校验和自动接口文档 |
-| Uvicorn | 真正在电脑上监听端口、接收网络请求的服务器程序 | FastAPI 描述处理规则，Uvicorn 负责运行这些规则 |
-| Pydantic | 根据 Python 类型声明检查数据结构的库 | 保证健康检查返回的字段和文档一致 |
-| pydantic-settings | 将环境变量和本地配置文件读取为有类型配置的库 | 开发与部署环境使用同一份代码，通过配置改变行为 |
-| 虚拟环境 | 当前项目专属的 Python 和第三方包目录 | 避免本项目的依赖与电脑上的其他 Python 项目互相干扰 |
-| 环境变量 | 程序运行前由操作系统或启动工具提供的配置项 | 更换环境时不需要直接改代码 |
-| 路由 | 请求地址和处理函数的对应关系 | 把 `/api/v1/health` 的请求交给健康检查函数 |
-| 跨来源资源共享 | 服务器通过响应头告诉浏览器，哪些其他来源的网页可以读取响应 | 前端端口 `5173` 和后端端口 `8100` 不同，需要允许本地开发来源 |
-| 自动化测试 | 用程序发送请求并检查结果是否符合约定 | 后续修改可以立即发现基础接口和配置被破坏的问题 |
-| pytest 与 httpx2 | 前者组织并运行测试，后者支持测试客户端发送请求 | 使用当前框架推荐的客户端依赖，避免弃用警告 |
-| OpenAPI | 用统一格式描述接口地址、参数和返回结构的规范 | FastAPI 自动生成这份描述，文档网页据此展示接口 |
+| GET | `/api/v1/health` | 服务存活 |
+| GET | `/api/v1/ready` | 数据库就绪 |
+| POST | `/api/v1/auth/login` | 账号密码登录 |
+| GET | `/api/v1/auth/me` | 当前身份 |
+| POST | `/api/v1/auth/logout` | 退出当前会话 |
 
-本机验证使用 Python `3.14.2`。直接依赖版本为 FastAPI `0.143.0`、Uvicorn `0.54.0`、Pydantic `2.14.1`、pydantic-settings `2.15.0`。安装文件同时固定了间接依赖，便于重现本次验证结果。
+本机 [接口文档](http://127.0.0.1:8100/docs)、[接口结构描述](http://127.0.0.1:8100/openapi.json)。文档入口可通过 `FIXFLOW_DOCS_ENABLED` 配置关闭。前端启动见 [前端说明](../frontend/README.md)。
 
-## 2. 安装：为什么先建立虚拟环境
-
-先打开 PowerShell，进入后端目录。后面的命令都在这个目录运行。
+## 验证与维护
 
 ```powershell
-cd E:\项目\fixFlow\backend # 进入命令所需的项目目录，使模块导入和相对路径按预期解析。
-python --version # 确认当前 Python 解释器版本，避免用错系统或其他项目的运行环境。
+.\.venv\Scripts\python.exe -m pytest # 运行测试；真实 PostgreSQL 测试需显式指定独立测试库。
+.\.venv\Scripts\python.exe -m pip check # 检查已安装依赖的版本关系。
+.\.venv\Scripts\python.exe -m app.cli cleanup-sessions # 清理已到期的登录会话。
 ```
 
-如果电脑的 `python` 命令不是 Python `3.14`，先安装对应版本并确保命令指向它。此项目的依赖当前只在 Python `3.14.2` 上完成验证，不能据此声称兼容其他版本。
+## Git 范围
 
-第一次使用时创建虚拟环境。`.venv` 是目录名；如果目录已经存在且对应 Python 版本正确，就不必重新创建。
+仓库仅保留 `frontend/`、`backend/`，排除本机配置、依赖和生成产物。新克隆后在仓库根目录启用本地检查：
 
 ```powershell
-python -m venv .venv # 为项目建立隔离环境，避免依赖安装影响电脑上的其他 Python 项目。
+git config --local core.hooksPath backend/.githooks # 为当前仓库启用提交与推送范围检查。
 ```
 
-安装运行和测试所需依赖。`-m` 表示让指定的 Python 运行后面的模块；这里明确使用 `.venv` 中的 Python，所以不会把第三方包安装进系统 Python。
+## 文档入口
 
-```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt # 安装固定的运行与测试依赖，以便复现当前后端验证环境。
-```
+学习资料统一保存在项目根目录 `docs/`，该目录按当前规则不随 Git 上传。
 
-`pip` 是 Python 的包安装工具，`-r` 表示从文件读取依赖列表。`requirements-dev.txt` 会先读取 `requirements.txt` 的运行依赖，再安装测试工具。以后部署服务时只需要运行依赖：
-
-```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt # 仅安装固定运行依赖，适用于不需要测试工具的正式运行环境。
-```
-
-本说明直接调用虚拟环境中的程序，不要求执行“激活虚拟环境”，因此也不需要修改 PowerShell 的脚本执行策略。
-
-## 3. 配置：为什么不把环境差异写死在代码里
-
-本地配置文件 `.env` 存在时会自动读取；不存在时使用开发默认值。可以第一次将示例复制为自己的配置，已有 `.env` 时不要覆盖：
-
-```powershell
-Copy-Item .env.example .env # 仅首次且没有 .env 时复制配置模板，已有真实配置时不要重复覆盖。
-```
-
-| 配置项 | 默认值 | 作用 |
-| --- | --- | --- |
-| `FIXFLOW_APP_NAME` | `FixFlow` | 服务名称 |
-| `FIXFLOW_APP_VERSION` | `0.1.0` | 当前后端版本 |
-| `FIXFLOW_ENVIRONMENT` | `development` | 环境标识，可选 `development`（开发）、`test`（测试）、`production`（生产） |
-| `FIXFLOW_DOCS_ENABLED` | `true` | 是否开放 `/docs`、`/redoc` 和 `/openapi.json` |
-| `FIXFLOW_CORS_ORIGINS` | 示例中的两种本地前端来源 | 浏览器可以跨来源读取响应的网页来源列表 |
-
-`FIXFLOW_` 是本项目的配置前缀，用来减少与其他程序的环境变量重名的机会。系统环境变量优先于 `.env`，`.env` 优先于代码默认值。配置在应用创建时读取，修改后需要重启后端。
-
-来源由协议、主机名和端口共同组成。`http://localhost:5173` 与 `http://127.0.0.1:5173` 是不同来源；更换前端端口后，需要将新来源写入列表。列表必须是带方括号和双引号的格式，例如：
-
-```dotenv
-# 设置可读取后端响应的本地前端来源；保留数组的括号与双引号。
-FIXFLOW_CORS_ORIGINS=["http://localhost:5173","http://127.0.0.1:5173"]
-```
-
-生产环境是否开放文档由 `FIXFLOW_DOCS_ENABLED` 独立决定，仅修改环境标识不会自动关闭文档。跨来源配置是浏览器访问规则，不代替身份认证或权限校验。
-
-## 4. 启动：为什么要运行 Uvicorn
-
-```powershell
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8100 # 用开发服务监听本机 8100 端口，将请求交给 app.main:app，修改 Python 文件后自动重载。
-```
-
-`app.main:app` 表示加载 `app/main.py` 中名为 `app` 的应用对象。`--reload` 在开发时监测代码修改并重新加载；部署时应去掉。`127.0.0.1` 表示只监听本机，`8100` 是接收请求的端口。
-
-本机 Windows 保留了 `7958` 到 `8057` 的端口段，因此本项目开发时使用 `8100`。如果看到 `WinError 10013`，先检查端口是否被系统保留；不要为启动项目随意修改系统网络设置。换用其他端口时，应同步前端开发代理的目标地址。
-
-启动后访问：
-
-- 健康检查：<http://127.0.0.1:8100/api/v1/health>
-- 可交互接口文档：<http://127.0.0.1:8100/docs>
-- 另一种接口文档展示：<http://127.0.0.1:8100/redoc>
-- 接口结构描述：<http://127.0.0.1:8100/openapi.json>
-
-健康检查返回：
-
-```json
-{
-  "status": "ok",
-  "service": "FixFlow",
-  "version": "0.1.0",
-  "environment": "development"
-}
-```
-
-`GET` 表示读取资源的请求方法；这里的接口只说明服务能够接收请求和返回响应，不代表数据库、文件存储或未来业务功能已经可用。接口文档网页默认使用框架提供的外部静态资源，电脑无法访问相关网络时，文档网页可能无法完整显示，但健康检查和 `/openapi.json` 仍是本地接口。
-
-## 5. 文件结构：为什么这样拆分
-
-```text
-backend/
-├── app/
-│   ├── main.py                 # 创建应用，挂载跨来源规则与路由
-│   ├── core/config.py          # 读取当前环境配置
-│   ├── api/v1/router.py        # 第一版接口的统一入口
-│   ├── api/v1/routes/health.py # 健康检查请求处理
-│   └── schemas/health.py      # 健康检查返回结构
-├── tests/test_health.py       # 基础接口和配置的自动化验证
-├── .env.example               # 可以公开提交的配置示例
-├── pyproject.toml             # 项目信息、直接依赖和测试设置
-├── requirements.txt           # 固定版本的运行依赖
-└── requirements-dev.txt       # 固定版本的开发与测试依赖
-```
-
-应用工厂就是“创建并返回一个应用对象的函数”，本项目函数名为 `create_app`。它把组装过程放在一处，还允许测试创建独立配置的应用，避免改动实际开发环境。当前没有业务数据操作，因此暂不创建空的数据库、数据访问或业务服务目录；等第一个业务功能真正需要时再建立。
-
-`schemas` 保存数据结构声明。健康检查声明了四个必需字段，框架据此校验响应并生成接口描述。`api/v1` 中的 `v1` 代表第一版接口；今后发生不兼容的协议变更时可以明确区分版本，不应把每次普通功能新增都当作新版本。
-
-## 6. 验证：为什么不能只看“服务启动成功”
-
-```powershell
-.\.venv\Scripts\python.exe -m pytest # 执行 tests/ 自动验证；真实 PostgreSQL 测试需显式指定独立测试库才运行。
-.\.venv\Scripts\python.exe -m pip check # 检查已安装包的版本要求是否冲突，补充业务测试不能覆盖的依赖一致性验证。
-```
-
-第一条命令运行测试，覆盖健康返回内容、两个本地前端来源、未知来源预检拒绝、自动接口文档、文档关闭和环境变量配置。第二条命令检查已安装依赖之间的版本关系。服务能启动不等于这些行为都正确，所以需要分别检查。
-
-测试使用 FastAPI 的测试客户端，它直接在程序内发起请求，无需提前占用 `8100` 端口。实际启动后的本机请求可另外用以下命令检查：
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:8100/api/v1/health # 向本机健康接口发出实际网络请求，确认监听服务能返回预期结构。
-```
-
-第一步健康检查包含 7 项用例，后续增加的数据库与认证用例一起运行，总数以实际测试输出为准。依赖检查通过会显示 `No broken requirements found.`。浏览器中的真实页面联调另由前端启动后验证。
-
-## 7. 本步骤知识点与面试问答
-
-### 问题一：为什么前后端使用两个目录？
-
-**总结版本：** 前端负责页面和交互，后端负责接口与后续业务规则。分开目录便于分别管理依赖、启动、测试和部署，通过明确的接口交换数据。
-
-**详细版本：** 浏览器下载并运行前端代码，后端则在服务器上长期运行。前端依赖由 JavaScript 包工具管理，后端依赖由 Python 包工具管理；两者的运行程序和配置也不同。把它们分别放在 `frontend` 和 `backend` 中，可以让一个目录只承担一种运行方式。前端将来发送请求，后端按约定返回结构化数据；目录分开本身不代表已完成业务联调。
-
-### 问题二：FastAPI 和 Uvicorn 分别做什么？
-
-**总结版本：** FastAPI 定义请求交给谁处理、数据长什么样；Uvicorn 监听网络端口，将实际请求交给应用，并把结果发回客户端。
-
-**详细版本：** 可以把路由理解成服务窗口的分工表：哪个地址由哪个函数处理，是 FastAPI 中的规则。只有规则还不会开始接收请求，必须有一个运行中的服务器程序。启动 Uvicorn 后，它在指定端口等待请求，找到应用并调用它的处理过程，再将结果写回网络连接。因此安装 FastAPI 和真正运行服务是两个不同步骤。
-
-### 问题三：为什么要有健康检查，成功意味着什么？
-
-**总结版本：** 健康检查用最小请求验证服务存活和基本连通性。当前成功只证明应用可访问，不证明未来数据库和业务操作可用。
-
-**详细版本：** 遇到页面无法获取数据时，问题可能来自前端地址、后端未启动、端口或业务逻辑。健康检查不依赖业务数据，能先判断“请求能否到后端并返回”。目前返回 `status: ok` 仅说明这个处理过程完成；之后如果需要判断数据库是否可用，应单独设计依赖就绪检查，不能把本次结果扩大解释为整个系统没有问题。
-
-### 问题四：为什么本地开发需要跨来源配置？
-
-**总结版本：** 浏览器根据协议、主机和端口判断来源。前端与后端端口不同，所以后端需要明确允许开发网页读取响应，并通过白名单限制来源。
-
-**详细版本：** 前端运行在 `http://localhost:5173`，后端运行在 `http://127.0.0.1:8100`。浏览器发现它们来源不同，会检查后端响应中的许可信息；某些请求发送前还会先发预检请求询问是否允许。后端中间件对允许来源添加响应头，对未知来源的预检返回拒绝。跨来源规则由浏览器执行，命令行客户端不受这套浏览器限制，因此它不能替代登录或权限检查。
-
-### 问题五：为什么配置不直接写在路由函数里？
-
-**总结版本：** 集中配置减少重复，让开发、测试和部署使用同一份代码。环境变量和本地配置文件负责提供差异，并由类型声明校验。
-
-**详细版本：** 例如开发前端端口是 `5173`，部署后的网页可能使用正式域名。如果各个接口都写一份地址，修改时容易漏掉。现在 `Settings` 统一读取配置，应用创建时确定这份配置，路由通过依赖获取当前应用的配置。测试也能传入独立设置，不必为了测试去改开发者的 `.env` 文件。
-
-### 问题六：为什么固定依赖版本并写自动化测试？
-
-**总结版本：** 固定版本减少安装结果随时间变化的风险；测试验证可观察行为，确保后续修改没有破坏接口约定。两者分别保证环境可重现和行为可检查。
-
-**详细版本：** 第三方包会持续更新。只写包名时，今天和以后安装到的版本可能不同；直接依赖还会继续安装自己的依赖，因此本项目同时记录间接依赖版本。版本固定不意味着永远不更新，更新时应该重新安装和验证。测试则模拟前端请求，检查状态、字段和跨来源响应等结果。如果以后接口被误改，测试会失败，帮助开发者在页面实际出问题前发现原因。
-
-## 8. 本步骤面试要求自查
-
-- [x] 能解释每个工具的职责，而不仅是复制启动命令。
-- [x] 前后端独立目录，后端配置、路由和返回结构职责明确。
-- [x] 使用独立虚拟环境，依赖版本可重现。
-- [x] 使用配置白名单处理本地跨来源访问。
-- [x] 有可访问的健康接口和自动生成的接口描述。
-- [x] 测试覆盖成功路径、来源拒绝和文档配置开关。
-- [x] 明确本次范围，未把演示数据和基础框架表述为已完成业务后端。
-
-## 9. 官方资料
-
-- [Python 3.14：虚拟环境](https://docs.python.org/3.14/library/venv.html)
-- [FastAPI：第一步](https://fastapi.tiangolo.com/zh/tutorial/first-steps/)
-- [FastAPI：多文件应用与路由组织](https://fastapi.tiangolo.com/tutorial/bigger-applications/)
-- [FastAPI：跨来源资源共享](https://fastapi.tiangolo.com/tutorial/cors/)
-- [FastAPI：自动化测试](https://fastapi.tiangolo.com/tutorial/testing/)
-- [Starlette：当前测试客户端依赖说明](https://starlette.dev/testclient/)
-- [FastAPI：环境变量与配置](https://fastapi.tiangolo.com/advanced/settings/)
-- [Pydantic：配置管理](https://docs.pydantic.dev/latest/concepts/pydantic_settings/)
-- [Uvicorn：启动参数](https://www.uvicorn.org/settings/)
-
-下一步应按产品需求文档选择一个完整的业务流程，先明确数据和接口约定，再接入数据库、身份认证与权限控制；本步骤不提前实现这些业务内容。
-
-## Git 提交范围
-
-当前仓库只允许上传 `frontend/`、`backend/`。两个目录的忽略文件排除本地生成内容；提交和推送前还会检查文件范围。新克隆后在仓库根目录执行 `git config --local core.hooksPath backend/.githooks` 安装本地钩子。
-
-规则原因、保留本地文件的处理方式、验证步骤和面试问答见 [第二步：Git 提交范围与回退](docs/02-Git提交范围与回退.md)。
+- [后端基础学习笔记](../docs/后端基础学习笔记-20261020.md)
+- [数据库、账号与容量估算](../docs/03-数据库接入与真实登录-20261016.md)
+- [后端逐行注释与请求流程](../docs/04-后端逐行注释与请求流程-20261016.md)
+- [前后端真实登录联调](../docs/07-前后端真实登录联调与身份恢复-20261019.md)
+- [Git 提交范围与回退](../docs/02-Git提交范围与回退-20261020.md)

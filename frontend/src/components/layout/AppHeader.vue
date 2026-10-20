@@ -6,7 +6,7 @@ import AppIcon from '@/components/common/AppIcon.vue'
 
 defineEmits(['open-library'])
 const { t } = useI18n()
-const { state, logout } = useWorkspace()
+const { state, auth, logout } = useWorkspace()
 const { language, setLanguage } = usePreferences()
 </script>
 
@@ -22,8 +22,9 @@ const { language, setLanguage } = usePreferences()
       <el-button text :aria-label="t('common.language')" @click="setLanguage(language === 'zh' ? 'en' : 'zh')">
         <span :class="{ 'language-active': language === 'zh' }">ZH</span><span class="language-divider">/</span><span :class="{ 'language-active': language === 'en' }">EN</span>
       </el-button>
-      <el-button v-if="!state.user" text @click="state.loginOpen = true"><AppIcon name="log-in" />{{ t('account.login') }}</el-button>
-      <el-button v-else text @click="logout"><AppIcon name="log-out" />{{ t('account.logout') }}</el-button>
+      <el-button v-if="auth.restoring" text disabled>{{ t('account.restoringSession') }}</el-button>
+      <el-button v-else-if="!state.user" text :disabled="auth.pending" @click="state.loginOpen = true"><AppIcon name="log-in" />{{ t('account.login') }}</el-button>
+      <el-button v-else text :loading="auth.pending" :disabled="auth.pending" @click="logout"><AppIcon name="log-out" />{{ t(auth.pending ? 'account.loggingOut' : 'account.logout') }}</el-button>
     </div>
   </header>
 </template>

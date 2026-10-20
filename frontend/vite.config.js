@@ -9,7 +9,7 @@ export default defineConfig(({ mode }) => {
     plugins: [vue()],
     resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
     server: {
-      port: 9096,
+      port: 5173,
       strictPort: true,
       proxy: { '/api': { target: env.VITE_BACKEND_TARGET || 'http://127.0.0.1:8100', changeOrigin: true } },
     },
